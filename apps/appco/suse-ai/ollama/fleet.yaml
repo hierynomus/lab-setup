@@ -28,5 +28,8 @@ dependsOn:
   - selector:
       matchLabels:
         provides: longhorn
+  - selector:
+      matchLabels:
+        provides: gpu-operator
 labels:
   provides: ollama
