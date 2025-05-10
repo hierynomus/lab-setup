@@ -1,0 +1,67 @@
+defaultNamespace: suse-ai
+helm:
+  chart: oci://dp.apps.rancher.io/charts/ollama
+  version: 5.16.0
+  releaseName: open-webui
+  values:
+    global:
+      imagePullSecrets: ["application-collection"]
+    image:
+      registry: dp.apps.rancher.io
+      repository: containers/open-webui
+      tag: 0.3.32
+      pullPolicy: IfNotPresent
+    ollamaUrls:
+    - http://ollama.suse-ai.svc.cluster.local:11434
+    persistence:
+      enabled: true
+      storageClass: longhorn
+    ollama:
+      enabled: false
+    pipelines:
+      enabled: False
+      persistence:
+        storageClass: longhorn
+    ingress:
+      enabled: true
+      class: "nginx"
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      host: "open-webui.${ .ClusterName }.lab.geeko.me"
+      tls: true
+      existingSecret: open-webui-tls
+    extraEnvVars:
+    - name: DEFAULT_USER_ROLE
+      value: "user"
+    - name: WEBUI_NAME
+      value: "SUSE AI"
+    - name: GLOBAL_LOG_LEVEL
+      value: INFO
+    - name: RAG_EMBEDDING_MODEL
+      value: "sentence-transformers/all-MiniLM-L6-v2"
+    - name: VECTOR_DB
+      value: "milvus"
+    - name: MILVUS_URI
+      value: http://milvus.suse-ai.svc.cluster.local:19530
+    - name: INSTALL_NLTK_DATASETS
+      value: "true" 
+overrideTargets:
+  - clusterSelector:
+      matchLabels:
+        needs-suse-ai: "true"
+dependsOn:
+  - selector:
+      matchLabels:
+        provides: application-collection
+  - selector:
+      matchLabels:
+        provides: ollama
+  - selector:
+      matchLabels:
+        provides: milvus
+  - selector:
+      matchLabels:
+        provides: longhorn
+labels:
+  provides: open-webui
