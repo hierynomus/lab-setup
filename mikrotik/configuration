@@ -1,0 +1,114 @@
+# 2025-10-13 11:32:25 by RouterOS 7.20.1
+# software id = 1TJX-BVFQ
+#
+# model = E60iUGS
+# serial number = HJK0ASP909N
+/system script add dont-require-permissions=yes name=dhcp2dns owner=admin policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon source="###\
+    \n# Script originally adapted from <https://blog.pessoft.com/2019/09/06/mikrotik-script-automatic-dns-records-from-dhcp-leases>\
+    \n# Modifications made by eduarbo <https://gist.github.com/eduarbo/5f34ab137d42c994c9c20461f90b5c9b>\
+    \n#\
+    \n# How it works:\
+    \n# - Creates static DNS records according to assigned DHCP lease.\
+    \n# - Deletes static DNS records according to unassigned DHCP lease.\
+    \n# - Deletes all related static DNS records, when new DNS record is being created to prevent duplicates. This can be done by IP and by hostname.\
+    \n# - DNS records hostname can use additional domain name or use short hostname or both.\
+    \n# - Hostname for DNS record can be set from:\
+    \n# - Variable set from the lease (\$lease-hostname) quick solution, which uses hostname passed from client\
+    \n# - Hostname from the lease (host-name attribute) a bit more CPU intensive solution, which searches leases for related hostname, but is also more compatible, if previous option is not available\
+    \n# - Comment of the static lease (comment attribute) secure solution, which uses hostname from comment of related static DHCP lease\
+    \n# - Supports separated deployment on multiple instances of DHCP server within one MikroTik device.\
+    \n#\
+    \n# The script is intended to be called by DHCP lease scripts within the MikroTik DHCP settings:\
+    \n# - Go to *IP -> DHCP Server -> YOUR_DHCP_SERVER* and in the *Lease Script* option type `dhcp2dns`\
+    \n# - Go to *System -> Scripts*, add a new script called `dhcp2dns` and paste this script in *Source*\
+    \n#\
+    \n# Script entry point\
+    \n#\
+    \n# Expected environment variables - set internally when calling the lease script:\
+    \n# leaseBound         1 = lease bound, 0 = lease removed\
+    \n# leaseServerName    Name of DHCP server\
+    \n# leaseActIP         IP address of DHCP client\
+    \n# leaseActMAC        MAC address of DHCP client\
+    \n# lease-hostname     Host name provided by the DHCP client\
+    \n###\
+    \n\
+    \n# When \"1\" all DNS entries with IP address of DHCP lease are removed\
+    \n:local dnsRemoveAllByIp \"1\"\
+    \n# When \"1\" all DNS entries with hostname of DHCP lease are removed\
+    \n:local dnsRemoveAllByName \"1\"\
+    \n# When \"1\" addition and removal of DNS entries is always done also for non-FQDN hostname\
+    \n:local dnsAlwaysNonfqdn \"0\"\
+    \n# DNS TTL to set for DNS entries\
+    \n:local dnsTtl \"00:15:00\"\
+    \n# Source of DHCP client hostname, can be \"lease-hostname\" or any other lease attribute, like \"host-name\" or \"comment\"\
+    \n:local leaseClientHostnameSource \"lease-hostname\"\
+    \n\
+    \n:local leaseComment \"dhcp-lease-script_\$leaseServerName_\$leaseClientHostnameSource\"\
+    \n:local leaseClientHostname\
+    \n\
+    \n:if (\$leaseClientHostnameSource = \"lease-hostname\") do={\
+    \n  :set leaseClientHostname \$\"lease-hostname\"\
+    \n} else={\
+    \n  :set leaseClientHostname ([:pick \\\
+    \n    [/ip dhcp-server lease print as-value where server=\"\$leaseServerName\" address=\"\$leaseActIP\" mac-address=\"\$leaseActMAC\"] \\\
+    \n    0]->\"\$leaseClientHostnameSource\")\
+    \n}\
+    \n\
+    \n:local leaseClientHostnames \"\$leaseClientHostname\"\
+    \n:local dnsDomain [/ip dhcp-server network get [:pick [find \$leaseActIP in address] 0] domain]\
+    \n\
+    \n:if ([:len [\$dnsDomain]] > 0) do={\
+    \n  :if (\$dnsAlwaysNonfqdn = \"1\") do={\
+    \n    :set leaseClientHostnames \"\$leaseClientHostname.\$dnsDomain,\$leaseClientHostname\"\
+    \n  } else={\
+    \n    :set leaseClientHostnames \"\$leaseClientHostname.\$dnsDomain\"\
+    \n  }\
+    \n}\
+    \n\
+    \n:if (\$leaseBound = \"1\") do={\
+    \n\
+    \n  :if (\$dnsRemoveAllByIp = \"1\") do={\
+    \n    /ip dns static remove [/ip dns static find comment=\"\$leaseComment\" and address=\"\$leaseActIP\"]\
+    \n  }\
+    \n\
+    \n  :foreach h in=[:toarray value=\"\$leaseClientHostnames\"] do={\
+    \n    :if (\$dnsRemoveAllByName = \"1\") do={\
+    \n      /ip dns static remove [/ip dns static find comment=\"\$leaseComment\" and name=\"\$h\"]\
+    \n    }\
+    \n    /ip dns static remove [/ip dns static find comment=\"\$leaseComment\" and address=\"\$leaseActIP\" and name=\"\$h\"]\
+    \n    :delay 1\
+    \n    /ip dns static add comment=\"\$leaseComment\" address=\"\$leaseActIP\" name=\"\$h\" ttl=\"\$dnsTtl\" match-subdomain=yes\
+    \n  }\
+    \n}"
+/ip dns {
+    set allow-remote-requests=yes servers=8.8.8.8,4.4.4.4
+    :local o [static find comment="defconf"]
+    :if ([:len $o] != 0) do={ static remove $o }
+    static {
+        add address=10.2.97.1 name=router.lab.geeko.me type=A
+        add address=10.2.97.2 name=flightdeck.lab.geeko.me type=A
+        add address=10.2.97.3 name=harvester.flightdeck.lab.geeko.me type=A
+        add address=10.2.97.4 name=bridge.lab.geeko.me type=A
+        add address=10.2.97.5 name=harvester.bridge.lab.geeko.me type=A
+    }
+}
+/ip pool {
+    :local o [find name="default-dhcp"]
+    :if ([:len $o] != 0) do { remove $o }
+    add name=lab-pool ranges=10.2.97.10-10.2.97.254
+}
+/ip dhcp-server network {
+    :local o [find name="defconf"]
+    :if ([:len $o] != 0) do={ remove $o }
+    add address=10.2.97.0/24 dns-server=10.2.97.1 domain=lab.geeko.me gateway=10.2.97.1 netmask=24
+}
+/ip dhcp-server {
+    :local o [find name="defconf"]
+    :if ([:len $o] != 0) do={ remove $o }
+    add address-pool=lab-pool interface=bridge lease-script=dhcp2dns name=lab-dhcp lease-time=1h
+}
+/ip address {
+    :local o [find comment="defconf"]
+    :if ([:len $o] != 0) do={ remove $o }
+    add address=10.2.97.1/24 interface=bridge network=10.2.97.0
+}
