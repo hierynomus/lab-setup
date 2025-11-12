@@ -1,0 +1,61 @@
+defaultNamespace: suse-ai
+helm:
+  chart: oci://dp.apps.rancher.io/charts/ollama
+  version: 4.2.2
+  releaseName: milvus
+  values:
+    global:
+      imagePullSecrets: ["application-collection"]
+    cluster:
+      enabled: false
+    standalone:
+      persistence:
+        persistentVolumeClaim:
+          storageClass: longhorn
+    pulsar:
+      enabled: false
+    pulsarv3:
+      enabled: false
+    etcd:
+      replicaCount: 1
+      persistence:
+        storageClassName: longhorn
+    minio:
+      enabled: true
+      mode: standalone
+      replicas: 1
+      tls:
+        enabled: false
+    kafka:
+      enabled: false
+      name: kafka
+      replicaCount: 3
+      broker:
+        enabled: true
+      cluster:
+        listeners:
+          client:
+            protocol: 'PLAINTEXT'
+          controller:
+            protocol: 'PLAINTEXT'
+      persistence:
+        enabled: true
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 8Gi
+        storageClassName: "longhorn" 
+overrideTargets:
+  - clusterSelector:
+      matchLabels:
+        needs-suse-ai: "true"
+dependsOn:
+  - selector:
+      matchLabels:
+        provides: application-collection
+  - selector:
+      matchLabels:
+        provides: longhorn
+labels:
+  provides: milvus

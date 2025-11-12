@@ -1,0 +1,35 @@
+defaultNamespace: suse-ai
+helm:
+  chart: oci://dp.apps.rancher.io/charts/ollama
+  releaseName: ollama
+  version: 0.63.0
+  values:
+    global:
+      imagePullSecrets: ["application-collection"]
+    ingress:
+      enabled: false
+    defaultModel: "gemma:2b"
+    ollama:
+      gpu:
+        enabled: true
+        type: 'nvidia'
+        number: 1
+    persistentVolume:
+      enabled: true
+      storageClass: longhorn
+overrideTargets:
+  - clusterSelector:
+      matchLabels:
+        needs-suse-ai: "true"
+dependsOn:
+  - selector:
+      matchLabels:
+        provides: application-collection
+  - selector:
+      matchLabels:
+        provides: longhorn
+  - selector:
+      matchLabels:
+        provides: gpu-operator
+labels:
+  provides: ollama
